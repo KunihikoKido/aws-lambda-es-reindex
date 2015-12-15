@@ -1,0 +1,13 @@
+{
+  "source_host": "http://localhost:9200/",
+  "source_index": "news",
+  "target_host": "http://localhost:9200/",
+  "target_index": "news",
+  "scroll": "5m",
+  "scan_options": {
+    "size": 100
+  },
+  "bulk_options": {
+    "chunk_size": 100
+  }
+}

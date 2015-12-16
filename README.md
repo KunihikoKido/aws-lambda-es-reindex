@@ -44,7 +44,7 @@ Example: Minimum:
 }
 ```
 
-Example: Transfer data to a another:
+Example: blog1 to blog2:
 ```json
 {
   "source_host": "http://<your_elasticsearch_server:9200>/",
@@ -58,5 +58,58 @@ Example: Transfer data to a another:
 
 Execution result sample:
 ```json
-null
+{
+  "acknowledged": true
+}
+```
+
+## Setup on local machine
+```bash
+# 1. Clone this repository with lambda function name
+git clone https://github.com/KunihikoKido/aws-lambda-es-reindex.git es-reindex
+
+# 2. Create and Activate a virtualenv
+cd es-reindex
+virtualenv env
+source env/bin/activate
+
+# 3. Install Python modules for virtualenv
+pip install -r requirements/local.txt
+
+# 4. Install Python modules for lambda function
+fab setup
+```
+
+## Run lambda function on local machine
+```bash
+fab invoke
+```
+
+#### Run lambda function with custom event
+```bash
+fab invoke:custom-event.json
+```
+
+## Make zip file
+```bash
+fab makezip
+```
+
+## Update function code on AWS Lambda
+```bash
+fab aws-updatecode
+```
+## Get function configuration on AWS Lambda
+```bash
+fab aws-getconfig
+```
+
+## Invoke function on AWS Lambda
+```bash
+fab aws-invoke
+```
+
+## Show fabric Available commands
+```bash
+fab -l
 ```

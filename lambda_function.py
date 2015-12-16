@@ -13,6 +13,8 @@ import settings
 logger = logging.getLogger()
 logger.setLevel(settings.LOG_LEVEL)
 
+RESULT_SUCCESS = {"acknowledged": True}
+
 class ScrollError(ElasticsearchException):
     pass
 
@@ -23,8 +25,9 @@ def lambda_handler(event, context):
         return False
 
     if not _is_valid(event):
-        logger.error('Invalid Event: {}'.format(event))
-        return
+        message = 'Invalid Parameters: {}'.format(event)
+        logger.error(message)
+        return {'error': message}
 
     source_host = event.get('source_host')
     source_index = event.get('source_index')
@@ -40,46 +43,38 @@ def lambda_handler(event, context):
     scan_options = event.get('scan_options', settings.DEFAULT_SCAN_OPTIONS)
     bulk_options = event.get('bulk_options', settings.DEFAULT_BULK_OPTIONS)
 
-    message_options = {
-        'source_host': source_host,
-        'source_index': source_index,
-        'target_host': target_host,
-        'target_index': target_index,
-    }
-
     if scroll_id is None:
-        scroll_id = scan_search(
-            source_client, index=source_index, scroll=scroll, **scan_options)
-        if scroll_id is None:
-            logger.info('Finished: {}'.format(message_options))
-            return
+        try:
+            scroll_id = scan_search(
+                source_client, index=source_index, scroll=scroll, **scan_options)
+        except Exception as e:
+            logger.error(e)
+            return {'error': str(e)}
+
+        if scroll_id:
+            event['scroll_id'] = scroll_id
+            invoke_reindex(event, context)
+            return RESULT_SUCCESS
+        else:
+            message = 'Can not get the scroll_id: {source_host} {source_index}'.format(**event)
+            logger.error(message)
+            return {'error': message}
 
     docs, scroll_id = scroll_search(source_client, scroll_id, scroll=scroll)
 
     if scroll_id is None or not docs:
-        logger.info('Finished: {}'.format(message_options))
-        return
+        logger.info('Finished: {}'.format(event))
+        return RESULT_SUCCESS
 
     success, errors = bulk_index(
         target_client, docs, target_index, **bulk_options)
     logger.info({"success": success, "errors": errors})
 
-    payload = {
-        'scroll_id': scroll_id,
-        'source_host': source_host,
-        'source_index': source_index,
-        'target_host': target_host,
-        'target_index': target_index,
-        'scroll': scroll,
-        'scan_options': scan_options,
-        'bulk_options': bulk_options,
-    }
 
-    if settings.DEBUG:
-        lambda_handler(payload, context)
-        return
+    event['scroll_id'] = scroll_id
+    invoke_reindex(event, context)
 
-    invoke_reindex(context.function_name, payload)
+    return RESULT_SUCCESS
 
 def elasticsearch_client(host):
     return Elasticsearch(host, timeout=settings.TIMEOUT, send_get_body_as='POST')
@@ -106,13 +101,16 @@ def scroll_search(client, scroll_id, scroll='1m', **kwargs):
     return docs, scroll_id
 
 
-def invoke_reindex(function_name, payload={}):
+def invoke_reindex(event, context):
+    if settings.DEBUG:
+        return lambda_handler(event, context)
+
     client = boto3.client('lambda')
     client.invoke(
-        FunctionName=function_name,
+        FunctionName=context.function_name,
         InvocationType='Event',
         LogType='None',
-        Payload=json.dumps(payload)
+        Payload=json.dumps(event)
     )
 
 

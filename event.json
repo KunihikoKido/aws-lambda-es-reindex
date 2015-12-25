@@ -1,5 +1,5 @@
 {
-  "source_host": "http://localhost:9200/",
+  "source_host": "http://127.0.0.1:9200/",
   "source_index": "news",
   "target_host": "http://localhost:9200/",
   "target_index": "news",

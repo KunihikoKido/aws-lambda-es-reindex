@@ -18,41 +18,93 @@ RESULT_SUCCESS = {"acknowledged": True}
 class ScrollError(ElasticsearchException):
     pass
 
-def lambda_handler(event, context):
-    def _is_valid(event):
-        if event.get('source_host') and event.get('source_index'):
+class Event(dict):
+    def __getattr__(self, name):
+        if name in self:
+            return self[name]
+        return None
+
+    def __setattr__(self, name, value):
+        self[name] = value
+
+    def __delattr__(self, name):
+        if name in self:
+            del(self[name])
+
+    def is_valid(self):
+        if self.get('source_host') and self.get('source_index'):
             return True
         return False
 
-    if not _is_valid(event):
+    def Elasticsearch(self, host):
+        return Elasticsearch(host, timeout=settings.TIMEOUT, send_get_body_as='POST')
+
+    @property
+    def source_host(self):
+        return self.get('source_host')
+
+    @property
+    def source_index(self):
+        return self.get('source_index')
+
+    @property
+    def source_client(self):
+        return self.Elasticsearch(self.source_host)
+
+    @property
+    def target_host(self):
+        return self.get('target_host', self.source_host)
+
+    @property
+    def target_index(self):
+        return self.get('target_index', self.source_index)
+
+    @property
+    def target_client(self):
+        return self.Elasticsearch(self.target_host)
+
+    @property
+    def scroll_id(self):
+        return self.get('scroll_id', None)
+
+    @property
+    def scroll(self):
+        return self.get('scroll', settings.DEFAULT_SCROLL)
+
+    @property
+    def scan_options(self):
+        return self.get('scan_options', settings.DEFAULT_SCAN_OPTIONS)
+
+    @property
+    def bulk_options(self):
+        return self.get('bulk_options', settings.DEFAULT_BULK_OPTIONS)
+
+
+def lambda_handler(event, context):
+    event = Event(event)
+    if not event.is_valid():
         message = 'Invalid Parameters: {}'.format(event)
         logger.error(message)
         return {'error': message}
 
-    source_host = event.get('source_host')
-    source_index = event.get('source_index')
-    source_client = elasticsearch_client(source_host)
+    scroll_id = event.scroll_id
 
-    target_host = event.get('target_host', source_host)
-    target_index = event.get('target_index', source_index)
-    target_client = elasticsearch_client(target_host)
-
-    scroll_id = event.get('scroll_id', None)
-    scroll = event.get('scroll', settings.DEFAULT_SCROLL)
-
-    scan_options = event.get('scan_options', settings.DEFAULT_SCAN_OPTIONS)
-    bulk_options = event.get('bulk_options', settings.DEFAULT_BULK_OPTIONS)
+    logger.debug('Scroll ID: {}'.format(scroll_id))
 
     if scroll_id is None:
         try:
             scroll_id = scan_search(
-                source_client, index=source_index, scroll=scroll, **scan_options)
+                event.source_client,
+                index=event.source_index,
+                scroll=event.scroll,
+                **event.scan_options
+            )
         except Exception as e:
             logger.error(e)
             return {'error': str(e)}
 
         if scroll_id:
-            event['scroll_id'] = scroll_id
+            event.scroll_id = scroll_id
             invoke_reindex(event, context)
             return RESULT_SUCCESS
         else:
@@ -60,24 +112,21 @@ def lambda_handler(event, context):
             logger.error(message)
             return {'error': message}
 
-    docs, scroll_id = scroll_search(source_client, scroll_id, scroll=scroll)
+    docs, scroll_id = scroll_search(event.source_client, scroll_id, scroll=event.scroll)
 
     if scroll_id is None or not docs:
         logger.info('Finished: {}'.format(event))
         return RESULT_SUCCESS
 
     success, errors = bulk_index(
-        target_client, docs, target_index, **bulk_options)
+        event.target_client, docs, event.target_index, **event.bulk_options)
     logger.info({"success": success, "errors": errors})
 
 
-    event['scroll_id'] = scroll_id
+    event.scroll_id = scroll_id
     invoke_reindex(event, context)
 
     return RESULT_SUCCESS
-
-def elasticsearch_client(host):
-    return Elasticsearch(host, timeout=settings.TIMEOUT, send_get_body_as='POST')
 
 def scan_search(client, index, scroll='1m', size=10, **kwargs):
     kwargs['search_type'] = 'scan'

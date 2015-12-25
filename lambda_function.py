@@ -10,7 +10,7 @@ from elasticsearch.exceptions import ElasticsearchException
 
 import settings
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 logger.setLevel(settings.LOG_LEVEL)
 
 RESULT_SUCCESS = {"acknowledged": True}

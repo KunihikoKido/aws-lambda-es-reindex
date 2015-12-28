@@ -1,6 +1,7 @@
 # Elasticsearch Reindex for AWS Lambda
 
 ## About
+Elasticsearch の Reindex APIをサーバーレスで実装するための Lambda ファンクションです。
 
 #### Runtime
 Python 2.7
@@ -35,24 +36,6 @@ Example: Input event:
 * ``scan_options.size``: (Optional) you will get back a maximum of size * number_of_primary_shards documents in each batch. default to ``500``
 * ``bulk_options.chunk_size``: (Optional) number of docs in one chunk sent to es. default to ``500``
 
-
-Example: Minimum:
-```json
-{
-  "source_host": "http://<your_elasticsearch_server:9200>/",
-  "source_index": "blog"
-}
-```
-
-Example: blog1 to blog2:
-```json
-{
-  "source_host": "http://<your_elasticsearch_server:9200>/",
-  "source_index": "blog1",
-  "target_host": "http://<your_elasticsearch_server:9200>/",
-  "target_index": "blog2",
-}
-```
 
 #### Execution result
 
@@ -112,4 +95,67 @@ fab aws-invoke
 ## Show fabric Available commands
 ```bash
 fab -l
+```
+
+## with Amazon API Gateway
+### _Example Settings for Reindex:_
+
+_Methods and Resources:_
+
+```
+POST /{sourceindex}/_reindex
+```
+
+_Request mapping template:_
+
+```json
+{
+  "source_host": "http://<your_elasticsearch_server:9200>/",
+  "source_index": "$input.params('sourceindex')",
+  "scroll": "5m",
+  "scan_options": {
+    "size": 500
+  },
+  "bulk_options": {
+    "chunk_size": 500
+  }
+}
+```
+
+_Example Request:_
+
+```
+POST /blog/_reindex
+```
+
+### _Example Settings for Index Copy:_
+
+_Methods and Resources:_
+
+```
+POST /{sourceindex}/_copy_to/{targetindex}
+```
+
+_Request mapping template:_
+
+```json
+{
+  "source_host": "http://<your_elasticsearch_server:9200>/",
+  "source_index": "$input.params('sourceindex')",
+  "source_host": "http://<your_elasticsearch_server:9200>/",
+  "source_index": "$input.params('targetindex')",
+  "scroll": "5m",
+  "scan_options": {
+    "size": 500
+  },
+  "bulk_options": {
+    "chunk_size": 500
+  }
+}
+```
+
+_Example Request:_
+
+```
+POST /blog1/_copy_to/blog2
 ```
